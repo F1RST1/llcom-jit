@@ -126,7 +126,7 @@ end
 
 --执行命令
 apiSetCb("cmd",function(data)
-    load(data)()
+    loadstring(data)()
     log.info("console","run success")
 end)
 
