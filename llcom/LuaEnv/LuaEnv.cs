@@ -32,6 +32,7 @@ namespace llcom.LuaEnv
         private ConcurrentBag<LuaTaskData> toRun = new ConcurrentBag<LuaTaskData>();//待运行的池子
         private readonly object taskLock = new object();
         private XLua.LuaFunction triggerCB = null;
+        private XLua.LuaEnv _spawnEnv;
 
         /// <summary>
         /// 发出报错信息
@@ -178,6 +179,42 @@ namespace llcom.LuaEnv
             }
         }
 
+        private object[] SpawnEnvRun(string code, XLua.LuaTable args)
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                if (_spawnEnv == null)
+                {
+                    _spawnEnv = new XLua.LuaEnv();
+                    _spawnEnv.DoString("package.path = [=[" +
+                        lua.Global.GetInPath<string>("package.path") + "]=]");
+                }
+
+                var t = _spawnEnv.NewTable();
+                if (args != null)
+                {
+                    // 注意: 只拷贝数组部分(整数 key),字符串 key 会被静默丢弃
+                    int i = 1;
+                    foreach (var v in args.ToArray<object>())
+                        t.Set(i++, v);
+                }
+                _spawnEnv.Global.Set("args", t);
+
+                try
+                {
+                    return _spawnEnv.DoString(code);
+                }
+                catch (Exception)
+                {
+                    _spawnEnv.Dispose();
+                    _spawnEnv = null;
+                    if (attempt == 1) throw;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// 初始化，加载全部接口
         /// </summary>
@@ -207,6 +244,8 @@ package.cpath = package.cpath..
 ';'..rootPath..'?.lua'..
 ';'..rootPath..'user_script_run/requires/?.lua'
 ");
+            lua.Global.Set("spawn_env",
+                (Func<string, XLua.LuaTable, object[]>)SpawnEnvRun);
         }
 
         /// <summary>
@@ -217,6 +256,7 @@ package.cpath = package.cpath..
             lock(taskLock)
             {
                 stop = true;//停止待运行任务
+                _spawnEnv?.Dispose();
                 lua.Dispose();//释放lua虚拟机
                 foreach (var v in timerPool)
                 {
