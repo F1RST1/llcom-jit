@@ -58,6 +58,10 @@ package.cpath = package.cpath..
 ';'..rootPath..'user_script_run/requires/?.lua'
 ");
 
+            lua.Global.Set("spawn_env",
+                (Func<string, XLua.LuaTable, object[]>)((code, args) =>
+                    LuaRunEnv.SpawnEnvRun(lua, code, args)));
+
             //运行初始化文件
             lua.DoString("require 'core_script.head'");
 

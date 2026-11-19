@@ -15,6 +15,7 @@ namespace llcom.LuaEnv
     {
         public static event EventHandler LuaRunError;//报错的回调
         private static XLua.LuaEnv lua = null;
+        private static XLua.LuaEnv _spawnEnv;
         private static CancellationTokenSource tokenSource = null;
         private static ConcurrentDictionary<int, CancellationTokenSource> pool = 
             new ConcurrentDictionary<int, CancellationTokenSource>();//timer回调池子
@@ -23,6 +24,48 @@ namespace llcom.LuaEnv
 
         public static bool isRunning = false;
         public static bool canRun = false;
+
+        public static object[] SpawnEnvRun(XLua.LuaEnv host, string code, XLua.LuaTable args)
+        {
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                if (_spawnEnv == null)
+                {
+                    _spawnEnv = new XLua.LuaEnv();
+                    _spawnEnv.DoString("package.path = [=[" +
+                        host.Global.GetInPath<string>("package.path") + "]=]");
+                }
+
+                var t = _spawnEnv.NewTable();
+                if (args != null)
+                {
+                    // 注意: 只拷贝数组部分(整数 key),字符串 key 会被静默丢弃
+                    int i = 1;
+                    while (true)
+                    {
+                        var v = args.Get<object>(i);
+                        if (v == null) break;   // 遇到 nil 停止
+                        if (v is XLua.LuaBase)
+                            throw new Exception("spawn_env: args 不支持嵌套 table/function，请传 string/number 等简单类型");
+                        t.Set(i, v);
+                        i++;
+                    }
+                }
+                _spawnEnv.Global.Set("args", t);
+
+                try
+                {
+                    return _spawnEnv.DoString(code);
+                }
+                catch (Exception)
+                {
+                    _spawnEnv.Dispose();
+                    _spawnEnv = null;
+                    if (attempt == 1) throw;
+                }
+            }
+            return null;
+        }
 
         private static void addTigger(int id, string type = "timer", byte[] data = null)
         {
@@ -161,6 +204,8 @@ namespace llcom.LuaEnv
             isRunning = false;
             tokenSource.Cancel();
             pool.Clear();
+            _spawnEnv?.Dispose();
+            _spawnEnv = null;
             lua = null;
         }
 
