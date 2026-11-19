@@ -190,14 +190,22 @@ namespace llcom.LuaEnv
                         lua.Global.GetInPath<string>("package.path") + "]=]");
                 }
 
-                var t = _spawnEnv.NewTable();
-                if (args != null)
-                {
-                    // 注意: 只拷贝数组部分(整数 key),字符串 key 会被静默丢弃
-                    int i = 1;
-                    foreach (var v in args.ToArray<object>())
-                        t.Set(i++, v);
-                }
+                var t = _spawnEnv.NewTable();  
+                if (args != null)  
+                {  
+                    // 注意: 只拷贝数组部分(整数 key),字符串 key 会被静默丢弃  
+                    int i = 1;  
+                    while (true)  
+                    {  
+                        var v = args.Get<object>(i);  
+                        if (v == null) break;   // 遇到 nil 停止
+                        if (v is XLua.LuaBase)  
+                            throw new Exception("spawn_env: args 不支持嵌套 table/function，请传 string/number 等简单类型");
+  
+                        t.Set(i, v);  
+                        i++;  
+                    }  
+                }  
                 _spawnEnv.Global.Set("args", t);
 
                 try
